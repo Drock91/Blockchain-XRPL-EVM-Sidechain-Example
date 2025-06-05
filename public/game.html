@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Minion Battle Game</title>
+  <style>
+    canvas {
+      background-color: #111;
+      display: block;
+      margin: 40px auto;
+      border: 2px solid #00c853;
+    }
+    body {
+      font-family: sans-serif;
+      background-color: #000;
+      color: #fff;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <button onclick="goToMainPage()" style="margin-top: 10px;">🏠 Back to Main Page</button>
+<h1 id="game-title">⚔️ Fight the Blockchain Minions</h1>
+<p>Arrow keys to move, Up to jump, Space to shoot, P for pause/resume</p>
+
+
+<canvas width="640" height="400"></canvas>
+<button id="pauseBtn" onclick="togglePause()">Pause</button>
+<div id="start-screen" style="margin-top: 20px;">
+  <button id="startBtn" style="padding: 10px 20px; font-size: 18px;">▶️ Start Game</button>
+  <p>Press Space or click the button to begin</p>
+</div>
+<div id="continue-section" style="display:none; margin-top: 10px;">
+  <button id="continueBtn" onclick="continueGame()" style="padding: 10px 20px;">🔁 Keep Fighting</button>
+</div>
+
+<div id="game-over" style="display:none; margin-top: 20px;">
+  <h2>💀 You Died</h2>
+  <button onclick="restartGame()" style="padding: 10px 20px; font-size: 16px;">Restart</button>
+</div>
+<audio id="bgMusic" src="assets/music/bgMusic.wav" loop></audio>
+<audio id="shootSfx" src="assets/sfx/shoot.wav"></audio>
+<audio id="hitSfx" src="assets/sfx/hit.mp3"></audio>
+<audio id="powerupDamageSfx" src="assets/sfx/damagePowerUp.mp3"></audio>
+<audio id="powerupHealSfx" src="assets/sfx/healPowerUp.wav"></audio>
+<audio id="deathSfx" src="assets/sfx/playerDeath.mp3"></audio>
+<audio id="deathenemySfx" src="assets/sfx/minionDeath.wav"></audio>
+<audio id="deathbossSfx" src="assets/sfx/bossDeath.wav"></audio>
+<audio id="reloadSfx" src="assets/sfx/reload.wav"></audio>
+
+<script>
+  
+  let isPaused = false;
+
+  const userAddress = localStorage.getItem("connectedWalletAddress");
+
+if (!userAddress) {
+  alert("❌ Please connect MetaMask before playing to earn rewards.");
+}
+const canvas = document.querySelector("canvas");
+const ctx = canvas.getContext("2d");
+const dtx = canvas.getContext("2d");
+
+const keys = {};
+document.addEventListener("keydown", e => {
+  keys[e.code] = true;
+
+  if (e.code === "KeyP") {
+    isPaused = !isPaused;
+    if (isPaused) {
+      console.log("⏸️ Game paused");
+    } else {
+      console.log("▶️ Game resumed");
+    }
+  }
+});
+document.addEventListener("keyup", e => keys[e.code] = false);
+
+document.addEventListener("keydown", (e) => {
+  startMusic(); // First key press triggers music
+}, { once: true }); // only once!
+
+const bossNetworks = ["Avalanche", "Ethereum", "XRPL-EVM", "Fantom", "Polygon", "Moonbeam", "Celo", "Base", "Arbitrum", "Optimism", "BSC", "Linea", "Zeta", "Scroll"];
+
+const blockchainTerms = ["Merkle Tree", "Hashrate", "Gas Limit", "Validator", "Hexadecimal", "Oracle", "Smart Contract"];
+
+const player = {
+  x: 50, y: 340, width: 30, height: 30, dx: 0, dy: 0,
+  speed: 3, jumpPower: -16, onGround: false,
+  health: 100, maxHealth: 100,
+  ammo: 5, maxAmmo: 5,
+  reloading: false, lastReload: 0,
+  isInvincible: false, invincibleTimer: 0
+};
+const bgMusic = document.getElementById("bgMusic");
+const shootSfx = document.getElementById("shootSfx");
+const hitSfx = document.getElementById("hitSfx");
+const powerupSfx = document.getElementById("powerupSfx");
+const powerupDamageSfx = document.getElementById("powerupDamageSfx");
+const powerupHealthSfx = document.getElementById("powerupHealSfx");
+const deathSfx = document.getElementById("deathSfx");
+const deathenemySfx = document.getElementById("deathenemySfx");
+const deathbossSfx = document.getElementById("deathbossSfx");
+const sfx = document.getElementById('reloadSfx');
+
+// Start background music when game starts
+bgMusic.volume = 0.5;
+bgMusic.play();
+function playReload() {
+  sfx.currentTime = 0;
+  sfx.play();
+}
+// Play sound effects
+function playShoot() {
+  shootSfx.currentTime = 0;
+  shootSfx.play();
+}
+function playHitSafe(type) {
+  const now = Date.now();
+  if(type === "enemy"){
+    if (now - lastHitSoundTime > 300) {  // 300ms cooldown
+      hitSfx.currentTime = 0;
+      hitSfx.play();
+      lastHitSoundTime = now;
+    }
+  } else {
+    if (now - lastHitPlayerSoundTime > 300) {  // 300ms cooldown
+      hitSfx.currentTime = 0;
+      hitSfx.play();
+      lastHitPlayerSoundTime = now;
+    }
+  }
+}
+function playPowerup(type) {
+  if(type === "damage"){
+    powerupDamageSfx.currentTime = 0;
+    powerupDamageSfx.play();
+  } else {
+    powerupHealthSfx.currentTime = 0;
+    powerupHealthSfx.play();
+  }
+  
+}
+function playDeath(type, boss) {
+  if(type === "enemy"){
+    if(boss === true){
+      deathbossSfx
+      deathbossSfx.currentTime = 0;
+      deathbossSfx.play();
+    } else {
+      deathenemySfx
+      deathenemySfx.currentTime = 0;
+      deathenemySfx.play();
+    }
+
+  } else {
+    deathSfx.currentTime = 0;
+  deathSfx.play();
+  }
+  
+}
+function startMusic() {
+  bgMusic.volume = 0.5; // optional: adjust volume
+  bgMusic.play().catch(err => {
+    console.warn("Autoplay blocked:", err);
+  });
+}
+const gravity = 0.6;
+const groundY = 370;
+
+const playerBullets = [];
+const powerUps = [];
+let damageBoostActive = false;
+let damageBoostEndTime = 0;
+
+class Minion {
+  constructor(name, x, y, isBoss = false) {
+    this.name = name;
+    this.x = x;
+    this.y = y;
+    this.width = 40;
+    this.height = 40;
+    this.health = isBoss ? 200 : 60;
+    this.maxHealth = this.health;
+    this.bullets = [];
+    this.lastShot = Date.now();
+    this.isBoss = isBoss;
+    this.dy = 0;
+    this.onGround = true;
+    this.jumpCooldown = Date.now() + Math.random() * 3000 + 1000;
+    this.shootCooldown = 500 + Math.random() * 1500;
+    this.direction = Math.random() < 0.5 ? -1 : 1;
+    this.directionChangeCooldown = Date.now() + Math.random() * 3000 + 1000;
+    this.speed = isBoss ? 1.2 : 0.8;
+    this.halfTriggered = false;
+  }
+
+  shoot() {
+    const now = Date.now();
+    if (now - this.lastShot > this.shootCooldown) {
+      const direction = player.x < this.x ? -1 : 1;
+      playShoot();
+      this.bullets.push({
+        x: this.x + (direction === 1 ? this.width : -6),
+        y: this.y + this.height / 2,
+        dx: direction * 4,
+        width: 6,
+        height: 4
+      });
+      this.lastShot = now;
+      this.shootCooldown = 500 + Math.random() * 1500;
+    }
+    
+  }
+
+  updatePhysics() {
+    this.dy += gravity;
+    this.y += this.dy;
+    if (this.y + this.height >= groundY) {
+      this.y = groundY - this.height;
+      this.dy = 0;
+      this.onGround = true;
+    }
+    this.x += this.direction * this.speed;
+    if (Date.now() > this.directionChangeCooldown) {
+      this.direction = Math.random() < 0.5 ? -1 : 1;
+      this.directionChangeCooldown = Date.now() + Math.random() * 3000 + 1000;
+    }
+    if (this.onGround && Date.now() > this.jumpCooldown) {
+      this.dy = -10 - Math.random() * 4;
+      this.onGround = false;
+      this.jumpCooldown = Date.now() + Math.random() * 3000 + 1000;
+    }
+    if (this.x <= 0) {
+      this.x = 0;
+      this.direction = 1;
+    }
+    if (this.x + this.width >= canvas.width) {
+      this.x = canvas.width - this.width;
+      this.direction = -1;
+    }
+  }
+}
+
+let minions = [];
+let minionIndex = 0;
+let currentMinionCount = 0;
+let minionDeathCount = 0;
+let bossDeathCount = 0;
+let minionDifficulty = 1;
+let totalMinions = Math.floor(Math.random() * 5) + 1 + minionDifficulty;
+let bossSpawned = false;
+let bossName = "";
+let lastHitSoundTime = 0;
+let lastHitPlayerSoundTime = 0;
+
+function spawnMinion(spawnX = 500, spawnY = 330) {
+  const name = "Minion: " + blockchainTerms[Math.floor(Math.random() * blockchainTerms.length)];
+  const hitsToKill = (minionIndex + 1);
+  const health = hitsToKill * 10;
+  const minion = new Minion(name, spawnX, spawnY);
+  minion.health = health;
+  minion.maxHealth = health;
+  minions.push(minion);
+  currentMinionCount++;
+  minionIndex++;
+}
+
+function spawnBoss(spawnX = 500, spawnY = 330) {
+  bossName = bossNetworks[Math.floor(Math.random() * bossNetworks.length)];
+  const hitsToKill = Math.floor(Math.random() * 16) + 10;
+  const health = hitsToKill * 10;
+  //const boss = new Minion("Final Boss: " + bossName, 500, 330, true);
+const boss = new Minion("Final Boss: " + bossName, spawnX, spawnY, true); // Pass position
+
+  boss.health = health;
+  boss.maxHealth = health;
+  minions.push(boss);
+  bossSpawned = true;
+}
+
+function spawnPowerUp(x, y) {
+  const type = Math.random() < 0.5 ? "damage" : "heal";
+  powerUps.push({ x, y, width: 20, height: 20, type });
+}
+
+function checkCollision(a, b) {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+function goToMainPage() {
+  window.location.href = "/"; // Replace "/" with your actual home page route if needed
+}
+function drawRect(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
+
+spawnMinion();
+function togglePause() {
+  isPaused = !isPaused;
+
+  const pauseBtn = document.getElementById("pauseBtn");
+  pauseBtn.textContent = isPaused ? "Resume" : "Pause";
+  pauseBtn.blur(); // Fix the spacebar issue
+}
+
+function continueGame() {
+  document.getElementById("continue-section").style.display = "none";
+  document.getElementById("game-title").innerText = "⚔️ Next Wave Incoming...";
+
+  // Reset spawn control
+  bossSpawned = false;
+  minionIndex = 0;
+  currentMinionCount = 0;
+
+  // Increase difficulty
+  currentMinionCount = 0;
+  minionDifficulty += 1;
+  totalMinions = Math.floor(Math.random() * 6) + minionDifficulty;
+    spawnMinion();
+}
+function update() {
+  player.dx = 0;
+  if (keys["ArrowLeft"]) player.dx = -player.speed;
+  if (keys["ArrowRight"]) player.dx = player.speed;
+  if (keys["ArrowUp"] && player.onGround) {
+    player.dy = player.jumpPower;
+    player.onGround = false;
+  }
+
+  if (keys["Space"] && !player.reloading && player.ammo > 0) {
+    if (playerBullets.length === 0 || Date.now() - playerBullets[playerBullets.length - 1].created > 400) {
+      let target = null;
+      let closestDist = Infinity;
+      for (const m of minions) {
+        const dist = Math.abs(m.x - player.x);
+        if (dist < closestDist) {
+          closestDist = dist;
+          target = m;
+        }
+      }
+      let bulletDir = 1;
+      if (target && target.x < player.x) bulletDir = -1;
+      playShoot();
+      playerBullets.push({
+        x: player.x + player.width / 2,
+        y: player.y + player.height / 2 - 2,
+        dx: bulletDir * 6,
+        width: 6,
+        height: 4,
+        created: Date.now()
+      });
+      player.ammo--;
+      if (player.ammo === 0) {
+        player.reloading = true;
+        player.lastReload = Date.now();
+        playReload(); // ✅ play reload sound
+      }
+    }
+  }
+
+  if (player.reloading && Date.now() - player.lastReload > 2000) {
+    player.ammo = player.maxAmmo;
+    player.reloading = false;
+  }
+
+  player.dy += gravity;
+  player.y += player.dy;
+  player.x += player.dx;
+
+  if (player.y + player.height > groundY) {
+    player.y = groundY - player.height;
+    player.dy = 0;
+    player.onGround = true;
+  }
+
+  if (player.x < 0) player.x = 0;
+  if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+  for (let i = playerBullets.length - 1; i >= 0; i--) {
+    playerBullets[i].x += playerBullets[i].dx;
+    if (playerBullets[i].x > canvas.width || playerBullets[i].x < 0) {
+      playerBullets.splice(i, 1);
+    }
+  }
+
+  for (const m of minions) {
+    m.updatePhysics();
+    m.shoot();
+    for (let i = m.bullets.length - 1; i >= 0; i--) {
+      m.bullets[i].x += m.bullets[i].dx;
+      if (m.bullets[i].x < 0 || m.bullets[i].x > canvas.width) {
+        m.bullets.splice(i, 1);
+      }
+    }
+    if (m.isBoss && !m.halfTriggered && m.health <= m.maxHealth / 2) {
+      m.halfTriggered = true;
+      spawnPowerUp(m.x, m.y);
+    }
+  }
+
+  if (player.isInvincible && Date.now() - player.invincibleTimer > 1000) {
+    player.isInvincible = false;
+  }
+
+  if (damageBoostActive && Date.now() > damageBoostEndTime) {
+    damageBoostActive = false;
+  }
+
+  for (let mi = minions.length - 1; mi >= 0; mi--) {
+    const m = minions[mi];
+    for (let i = playerBullets.length - 1; i >= 0; i--) {
+      const b = playerBullets[i];
+      if (checkCollision(b, m)) {
+        playHitSafe("enemy");
+        m.health -= damageBoostActive ? 20 : 10;
+        playerBullets.splice(i, 1);
+      }
+    }
+    for (let i = m.bullets.length - 1; i >= 0; i--) {
+      const b = m.bullets[i];
+      if (!player.isInvincible && checkCollision(b, player)) {
+        player.health -= 10;
+        player.isInvincible = true;
+        player.invincibleTimer = Date.now();
+        playHitSafe("player");
+        m.bullets.splice(i, 1);
+      }
+    }
+    if (!player.isInvincible && checkCollision(player, m)) {
+        playHitSafe("player");
+      player.health -= 10;
+      player.isInvincible = true;
+      player.invincibleTimer = Date.now();
+    }
+
+    if (m.health <= 0) {
+      if (Math.random() < 0.4) spawnPowerUp(m.x, m.y);
+      const spawnX = m.x, spawnY = m.y;
+      minions.splice(mi, 1);
+      if (m.isBoss) {
+            bossDeathCount++;
+        playDeath("enemy", true);
+        document.getElementById("game-title").innerText = `🎉 You defeated Final Boss: ${bossName}!`;
+        if (userAddress) {
+          notifyBuffEarned(userAddress, bossName); // ✅ Send buff to backend
+        } else {
+          alert("⚠️ You must connect MetaMask before playing to earn rewards.");
+        }
+
+          document.getElementById("continue-section").style.display = "block";
+
+      } else if (currentMinionCount < totalMinions) {
+        playDeath("enemy", false);
+            minionDeathCount++;
+        spawnMinion(spawnX, spawnY);
+      } else if (!bossSpawned) {
+        playDeath("enemy", false);
+            minionDeathCount++;
+        spawnBoss(spawnX, spawnY);
+        document.getElementById("game-title").innerText = `⚔️ Defeat ${bossName} to earn a claim buff!`;
+      }
+    }
+  }
+
+  for (let i = powerUps.length - 1; i >= 0; i--) {
+    const p = powerUps[i];
+    if (checkCollision(player, p)) {
+      if (p.type === "damage") {
+        damageBoostActive = true;
+        damageBoostEndTime = Date.now() + 10000;
+
+      } else if (p.type === "heal") {
+        player.health = Math.min(player.maxHealth, player.health + 10);
+
+      }
+      playPowerup(p.type);
+      
+      powerUps.splice(i, 1);
+    }
+  }
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawRect(0, groundY, canvas.width, 30, "#444");
+
+  if (!player.isInvincible || Math.floor(Date.now() / 100) % 2 === 0) {
+    const color = damageBoostActive ? "#00f" : "#00c853";
+    drawRect(player.x, player.y, player.width, player.height, color);
+  }
+
+  powerUps.forEach(p => {
+    ctx.save();
+    ctx.shadowColor = p.type === "damage" ? "blue" : "lime";
+    ctx.shadowBlur = 10;
+    drawRect(p.x, p.y, p.width, p.height, p.type === "damage" ? "#00f" : "#0f0");
+    ctx.restore();
+
+  });
+
+  playerBullets.forEach(b => drawRect(b.x, b.y, b.width, b.height, "#fff"));
+
+  minions.forEach(m => {
+    //drawRect(m.x, m.y, m.width, m.height, "red");
+    drawRect(m.x, m.y, m.width, m.height, m.isBoss ? "purple" : "red");
+
+    m.bullets.forEach(b => drawRect(b.x, b.y, b.width, b.height, "orange"));
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.fillText(`${m.name}`, m.x + m.width / 2, m.y - 20);
+    drawRect(m.x, m.y - 10, 40, 4, "#444");
+    drawRect(m.x, m.y - 10, (m.health / m.maxHealth) * 40, 4, "#f00");
+  });
+
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "left";
+  ctx.fillText("Player Health", 10, 20);
+  drawRect(10, 30, 200, 10, "#444");
+  drawRect(10, 30, (player.health / player.maxHealth) * 200, 10, "#00c853");
+  // Right-side counters
+ctx.fillStyle = "#fff";
+ctx.textAlign = "right";
+ctx.fillText(`Minions Defeated: ${minionDeathCount}`, canvas.width - 10, 20);
+ctx.fillText(`Bosses Defeated: ${bossDeathCount}`, canvas.width - 10, 40);
+
+// Restore text alignment for anything after this
+ctx.textAlign = "left";
+  ctx.fillText("Ammo", 10, 60);
+  for (let i = 0; i < player.maxAmmo; i++) {
+    const x = 10 + i * 25;
+    const y = 70;
+    ctx.fillStyle = i < player.ammo ? "#ffeb3b" : "#555";
+    ctx.fillRect(x, y, 20, 10);
+  }
+
+  if (player.reloading) {
+    ctx.fillStyle = "#fff";
+    ctx.fillText("Reloading...", 10, 100);
+  }
+}
+let gameStarted = false;
+
+function startGame() {
+  if (gameStarted) return;
+  gameStarted = true;
+
+  document.getElementById("start-screen").style.display = "none";
+  startMusic();
+  loop();
+}
+
+document.getElementById("startBtn").onclick = startGame;
+
+document.addEventListener("keydown", (e) => {
+  if (!gameStarted && e.code === "Space") {
+    e.preventDefault();
+    startGame();
+  }
+});
+function restartGame() {
+  window.location.reload();
+}
+async function notifyBuffEarned(userAddress, network) {
+  try {
+    const response = await fetch('http://localhost:3000/api/add-buff', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        userAddress,
+        network
+      })
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      console.log('Buff added successfully:', result.message);
+    } else {
+      console.warn('Buff add failed:', result.error);
+    }
+  } catch (err) {
+    console.error('Error calling add-buff:', err);
+  }
+}
+function loop() {
+   if (isPaused) {
+    requestAnimationFrame(loop);
+    return;
+  }
+  update();
+  render();
+  if (player.health > 0) {
+    requestAnimationFrame(loop);
+  } else {
+    playDeath("player", false);
+    document.getElementById("game-over").style.display = "block";
+  }
+}
+
+//loop();
+</script>
+</body>
+</html>

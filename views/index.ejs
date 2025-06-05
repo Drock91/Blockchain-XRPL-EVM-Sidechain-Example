@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>XRPL EVM Wallet Generator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.8.1/dist/ethers.umd.min.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #1E1E1E;
+      color: #FFFFFF;
+      margin: 0;
+      padding: 40px;
+      max-width: 800px;
+      margin: auto;
+    }
+    h1, h2 {
+      color: #0080FF;
+      font-weight: 700;
+    }
+    p {
+      font-size: 1rem;
+      margin-bottom: 20px;
+    }
+    button {
+      background-color: #0080FF;
+      color: #FFFFFF;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      margin-right: 10px;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #0066CC;
+    }
+    .alert {
+      background-color: #FF6D00;
+      color: #FFFFFF;
+      padding: 16px;
+      border-radius: 8px;
+      margin-top: 20px;
+      font-weight: 600;
+    }
+    .wallet-info {
+      background-color: #2E2E2E;
+      border: 1px solid #444444;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+    .wallet-info p {
+      margin: 10px 0;
+      word-break: break-word;
+    }
+    .label {
+      font-weight: 600;
+      color: #00C853;
+    }
+    #faucetLink {
+      display: none;
+      margin-top: 20px;
+    }
+    .disconnect-container {
+  text-align: right;
+  margin-top: 20px;
+}
+
+#disconnectWalletBtn {
+  background-color: #0080FF;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+#disconnectWalletBtn:hover {
+  background-color: #0066cc;
+}
+  </style>
+</head>
+<body>
+<button id="playGameBtn">🎮 Play to Earn Buff</button>
+
+ <h1>Multichain Shooter Game Connected to XRPL EVM via Axelar</h1>
+<p>
+  This retro 2D shooter lets you battle bosses representing major blockchains like Ethereum, Polygon, and the XRPL EVM sidechain.
+  Defeat them to earn <strong>buffs</strong> that enhance your rewards across chains.
+  <br /><br />
+  <strong>Powered by Axelar:</strong> Axelar enables secure cross-chain messaging, allowing your in-game victories to trigger smart contracts on multiple blockchains.
+</p>
+  <h2 id="connectWalletBtnText">🔌 Connect</h2>
+<button id="connectWalletBtn">Connect MetaMask</button>
+<p id="walletBalance" style="color: #00E676; margin-top: 10px;"></p>
+
+  <div class="alert" id="walletAlert" style="display: none;">
+    ⚠️ <strong>Important:</strong> Please save your wallet details securely. Losing them means losing access to your assets.
+  </div>
+
+  <div class="wallet-info" id="walletDetails" style="display: none;">
+    <p><span class="label">Address:</span> <span id="walletAddress"></span></p>
+    <p><span class="label">Private Key:</span> <span id="walletPrivateKey"></span></p>
+    <p><span class="label">Mnemonic Phrase:</span> <span id="walletMnemonic"></span></p>
+  </div>
+
+  <div id="faucetLink">
+    <a href="https://faucet.xrplevm.org" target="_blank">
+      <button>🌐 Open Faucet to Fund Wallet</button>
+    </a>
+    <p style="margin-top: 10px; color: #BBBBBB;">Connect MetaMask and request testnet XRP to your wallet above.</p>
+  </div>
+
+  <hr style="margin: 40px 0; border: 1px solid #444;" />
+
+  <h2>Claim Rewards</h2>
+  <button id="claimViaMetamaskBtn">Claim With MetaMask</button>
+  <p id="cooldownTimer" style="margin-top: 20px; color: #FFEB3B;"></p>
+
+
+  <h2>Your Active Buffs</h2>
+  <div id="buffList" style="margin-bottom: 20px; color: #00C853;"></div>
+
+
+  <h2 id="generateWalletBtntext">Sign up</h2>
+  <button id="generateWalletBtn">Generate Wallet</button>
+
+
+  <div class="disconnect-container">
+  <button id="disconnectWalletBtn" style="display: none;">🔌 Disconnect Wallet</button>
+</div>
+  <script>
+    document.getElementById("playGameBtn").addEventListener("click", () => {
+      const connected = localStorage.getItem("connectedWalletAddress");
+
+      if (!connected) {
+        alert("❌ Please connect your MetaMask wallet before playing.");
+        return;
+      }
+    
+      window.location.href = '/game.html';
+    });
+    let lastGeneratedAddress = '';
+
+    document.getElementById('generateWalletBtn').addEventListener('click', async () => {
+      try {
+        const response = await fetch('/api/generate-xrpl-evm-wallet');
+        const data = await response.json();
+        if (data.success) {
+          lastGeneratedAddress = data.address;
+          document.getElementById('walletAddress').textContent = data.address;
+          document.getElementById('walletPrivateKey').textContent = data.privateKey;
+          document.getElementById('walletMnemonic').textContent = data.mnemonic;
+          document.getElementById('walletAlert').style.display = 'block';
+          document.getElementById('walletDetails').style.display = 'block';
+          document.getElementById('faucetLink').style.display = 'block';
+        } else {
+          alert('❌ Failed to generate wallet.');
+        }
+      } catch (error) {
+        console.error(error);
+        alert('❌ Error generating wallet.');
+      }
+    });
+    async function fetchActiveBuffs(address) {
+  try {
+    const res = await fetch('/api/get-active-buffs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userAddress: address })
+    });
+    const data = await res.json();
+    if (data.success) {
+      const buffList = document.getElementById('buffList');
+      if (data.buffs.length === 0) {
+        buffList.textContent = "⚠️ No active buffs found.";
+      } else {
+        buffList.innerHTML = data.buffs.map(name => `✅ ${name}`).join('<br>');
+      }
+    } else {
+      console.warn("Failed to fetch buffs", data.error);
+    }
+  } catch (err) {
+    console.error("Buff fetch error", err);
+  }
+}
+
+    async function checkCooldown(address) {
+      try {
+        const res = await fetch('/api/next-claim-time', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userAddress: address })
+        });
+        const data = await res.json();
+        if (data.success) {
+          const countdown = data.secondsLeft;
+          if (countdown > 0) {
+            startCountdown(countdown);
+          } else {
+            document.getElementById('cooldownTimer').textContent = '✅ You can claim now!';
+          }
+        } else {
+          document.getElementById('cooldownTimer').textContent = '⚠️ Could not check claim time.';
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById('cooldownTimer').textContent = '⚠️ Error checking cooldown.';
+      }
+    }
+
+    function startCountdown(seconds) {
+      const timerEl = document.getElementById('cooldownTimer');
+      let remaining = seconds;
+
+      const interval = setInterval(() => {
+        const hours = Math.floor(remaining / 3600);
+        const mins = Math.floor((remaining % 3600) / 60);
+        const secs = remaining % 60;
+        timerEl.textContent = `⏳ Next claim available in: ${hours}h ${mins}m ${secs}s`;
+        remaining--;
+
+        if (remaining < 0) {
+          clearInterval(interval);
+          timerEl.textContent = '✅ You can claim now!';
+        }
+      }, 1000);
+    }
+    document.getElementById('connectWalletBtn').addEventListener('click', async () => {
+  try {
+    if (!window.ethereum) {
+      alert('Please install MetaMask to use this feature.');
+      return;
+    }
+
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const address = await signer.getAddress();
+    localStorage.setItem("connectedWalletAddress", address); // ✅ Save for game.html
+    console.log('[Connected Wallet]', address);
+
+    const xrplEvmProvider = new ethers.JsonRpcProvider('https://rpc-evm-sidechain.xrpl.org');
+    const balanceWei = await xrplEvmProvider.getBalance(address);
+    const balance = ethers.formatEther(balanceWei);
+
+    document.getElementById('walletBalance').textContent = `💰 Balance: ${balance} XRP`;
+    document.getElementById('disconnectWalletBtn').style.display = 'inline-block';
+    // ✅ Hide the Generate Wallet section
+    document.getElementById('connectWalletBtn').style.display = 'none';
+    document.getElementById('connectWalletBtnText').style.display = 'none';
+    document.getElementById('generateWalletBtn').style.display = 'none';
+    document.getElementById('generateWalletBtntext').style.display = 'none';
+    document.getElementById('walletAlert').style.display = 'none';
+    document.getElementById('walletDetails').style.display = 'none';
+    document.getElementById('faucetLink').style.display = 'none';
+
+
+  } catch (err) {
+    console.error(err);
+    alert('❌ Failed to connect or fetch balance: ' + (err.reason || err.message));
+  }
+});
+    document.getElementById('claimViaMetamaskBtn').addEventListener('click', async () => {
+      try {
+        if (!window.ethereum) return alert('Please install MetaMask to use this feature.');
+
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const CONTRACT_ADDRESS = '0x40140c0cf5e6b5c9df777012c1e8599afdafc8ff';
+        const ABI = [
+  "function addBuff(address,string)",                                        // add or refresh a buff
+  "function claim()",                                                 // claim a buff for a network
+  "function getCooldownRemaining(address) view returns (uint256)",          // get cooldown time left
+  "function playerBuffs(address,string) view returns (uint256)",            // raw timestamp of buff
+  "function lastClaim(address) view returns (uint256)",                     // last claim timestamp
+  "function getActiveNetworks(address,string[]) view returns (bytes32[])"   // ✅ corrected signature
+];
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+        const address = await signer.getAddress();
+        console.log('[MetaMask signer address]', address);
+
+        const canClaim = await contract.getCooldownRemaining(address);
+        alert('✅ getCooldownRemaining successful! canClaim: ' + canClaim );// + tx.hash);
+        if (canClaim > 0) {
+          alert('❌ Already claimed for this wallet.');
+          await checkCooldown(address);
+          return;
+        }
+        const claim = await claimRewards(address);
+        if (claim.success) {
+          alert('✅ Claim successful! TX Hash: ' + claim.txHash);
+          // Optional: update UI
+          checkCooldown(address); // refresh timer
+          fetchActiveBuffs(storedAddress); // ✅ call the buff check
+        } else {
+          alert('❌ Claim failed: ' + (claim.error || 'Unknown error'));
+        }
+        //checkCooldown(address);
+      } catch (err) {
+        console.error(err);
+        alert('❌ MetaMask claim failed: ' + (err.reason || err.message));
+      }
+    });
+    async function claimRewards(address) {
+  try {
+    const res = await fetch('/api/claim-rewards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userAddress: address })
+    });
+
+    const data = await res.json();
+    return data; // ⬅️ This is key — return the data object
+  } catch (err) {
+    console.error('Error in claimRewards:', err);
+    return { success: false, error: '⚠️ Network error during claim.' };
+  }
+}
+window.addEventListener('DOMContentLoaded', async () => {
+  const storedAddress = localStorage.getItem("connectedWalletAddress");
+
+  if (storedAddress) {
+    // Hide connect & generate wallet buttons
+    document.getElementById('connectWalletBtn').style.display = 'none';
+    document.getElementById('connectWalletBtnText').style.display = 'none';
+    document.getElementById('generateWalletBtn').style.display = 'none';
+    document.getElementById('generateWalletBtntext').style.display = 'none';
+    document.getElementById('walletAlert').style.display = 'none';
+    document.getElementById('walletDetails').style.display = 'none';
+    document.getElementById('faucetLink').style.display = 'none';
+
+    // Show balance
+    try {
+      const xrplEvmProvider = new ethers.JsonRpcProvider('https://rpc-evm-sidechain.xrpl.org');
+      const balanceWei = await xrplEvmProvider.getBalance(storedAddress);
+      const balance = ethers.formatEther(balanceWei);
+      document.getElementById('walletBalance').textContent = `💰 Balance: ${balance} XRP`;
+    } catch (err) {
+      console.warn('Failed to fetch balance:', err);
+    }
+    // Check claim cooldown
+    checkCooldown(storedAddress);
+    fetchActiveBuffs(storedAddress); // ✅ call the buff check
+
+    document.getElementById('disconnectWalletBtn').style.display = 'inline-block';
+  }
+});
+document.getElementById('disconnectWalletBtn').addEventListener('click', () => {
+  localStorage.removeItem('connectedWalletAddress');
+  location.reload(); // Refresh the page to reset UI
+});
+  </script>
+</body>
+</html>
