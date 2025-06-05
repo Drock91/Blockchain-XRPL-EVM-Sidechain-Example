@@ -42,7 +42,7 @@ daily-claim-dapp/
 Create a `.env` file (already `.gitignore`d) in the root folder based on `.env.example`:
 
 ```env
-XRPL_PRIVATE_KEY=your_private_key_here
+XRPL_PRIVATE_KEY=your_private_metamask_key_here
 PORT=3000
 MONGO_URI=mongodb://localhost:27017/daily-claim-dapp
 ```
